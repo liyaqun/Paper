@@ -1,0 +1,505 @@
+library(tidyverse)
+library(readxl)
+
+#.导入数据
+
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\全球GDB.xlsx") 
+
+Global_21Regions_change <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\全球GDB_change.xlsx")
+head(Global_21Regions_change)
+
+
+# 数据筛选---》得到2019年的患病率 
+prevalence <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex=='合计',
+         age=='全部',
+         measure=='患病率',
+         metric=='数量'
+         )
+
+head(prevalence)
+
+# 数据转换
+# 将数据变为每1000000人
+switch_prevalence <- prevalence %>% mutate(val=round(val/1000000,1),
+                                 upper=round(upper/1000000,1),
+                                 lower=round(lower/1000000,1),
+                                 Globa1_21Regions=paste0(val,'(',lower,',',upper,')'))
+
+library(maps) # 各个国家的地理信息
+library(ggmap)
+library(dplyr)
+library(RColorBrewer) # 调色盘
+library(readxl)
+
+library(ggplot2)
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019.xlsx") 
+
+data <- vroom::vroom("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019.xlsx")
+str(data)
+
+data <- Globa1_21Regions
+
+# 选择数据：年份为1990 年龄为标准化年龄（AS） 病因所有原因  性别为合计
+# 观测指标为：患病率（PR）
+
+# 数据筛选---》得到1990年的患病率 
+data_1990_ASPR <- data %>% select('measure_name',	'location_name',	'sex_name',	'age_name',	'cause_name',	'metric_name',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='1990',
+         sex_name=='Both',
+         age_name=='Age-standardized',
+         measure_name=='Prevalence',
+         metric_name=='Rate'
+  )
+
+data_1990_ASPR<-data_1990_ASPR %>% select('location_name',	'val',	'upper',	'lower')  
+
+#保留小数点后两位
+
+data_1990_ASPR <- data_1990_ASPR %>% mutate(val=round(val,2),
+                                           upper=round(upper,2),
+                                           lower=round(lower,2))
+
+# 使用maps包获取世界地图的范围和信息
+worldData<- map_data('world')
+
+# 将地理位置字符化
+data_1990_ASPR$location_name<- as.character(data_1990_ASPR$location_name)
+
+# 合并你的数据和地图数据
+merged_data <- merge(worldData, data_1990_ASPR, by.x = "region", by.y = "location_name", all.x = TRUE)
+
+# 将 merged_data 数据框中 val 列的缺失值替换为 0
+merged_data$val[is.na(merged_data$val)] <- 0
+
+# 过滤掉无效值
+valid_data <- merged_data[merged_data$val >= 0, ]
+
+# 检查并确保 valid_data$val 是数值型
+valid_data$val <- as.numeric(valid_data$val)
+
+# 创建新列 val2，按每 100 划分区间，显式设置 include.lowest = TRUE
+valid_data$val2 <- cut(valid_data$val, 
+                       breaks = seq(0, 1000, by = 100),  # 划分区间：0-100, 100-200, ..., 900-1000
+                       labels = paste0(seq(0, 900, by = 100), "-", seq(100, 1000, by = 100)),
+)
+
+# 查看 val = 0 的行对应的 val2 是否正确划分
+subset(valid_data, val == 0)
+# 定义 10 种颜色
+mycolors <- c("#FF0000", "#FFA500", "#FFFF00", "#00FF00", "#00FFFF", 
+              "#0000FF", "#FF00FF", "#800000", "#808000", "#008000")
+
+
+
+
+# 绘制世界地图
+p1 <- ggplot() +
+  # 绘制世界地图，调整边界线条颜色、透明度，以及填充颜色的透明度
+  # 同时调整 linejoin 和 linemitre 参数
+  geom_polygon(data = valid_data,
+               aes(x = long, y = lat, group = group, fill = val2),
+               colour = NA,
+               linejoin = "round", linemitre = 1) +
+  scale_fill_manual(values = mycolors) +
+  # 修改图片的主题和标签
+  theme_void() +
+  labs(x = "", y = "") +
+  # 
+  guides(fill = guide_legend(title = 'Number')) +
+  theme(legend.position = 'right')
+p1
+
+
+
+
+
+
+
+
+# 选择数据：年份为1990 年龄为标准化年龄（AS） 病因所有原因  性别为合计
+# 观测指标为：发病率（IR）
+
+# 数据筛选---》得到1990年的发病率 
+data_1990_ASIR <- data %>% select('measure_name',	'location_name',	'sex_name',	'age_name',	'cause_name',	'metric_name',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='1990',
+         sex_name=='Both',
+         age_name=='Age-standardized',
+         measure_name=='Incidence',
+         metric_name=='Rate'
+  )
+
+data_1990_ASIR<-data_1990_ASIR %>% select('location_name',	'val',	'upper',	'lower')  
+
+#保留小数点后两位
+
+data_1990_ASIR <- data_1990_ASIR %>% mutate(val=round(val,2),
+                                            upper=round(upper,2),
+                                            lower=round(lower,2))
+
+
+
+
+library(openxlsx)
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_1990_ASIR, file = "data_1990_ASIR.xlsx")
+
+
+
+
+# 数据筛选---》得到1990年的残疾生存年数
+data_1990_YLDs <- data %>% select('measure_name',	'location_name',	'sex_name',	'age_name',	'cause_name',	'metric_name',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='1990',
+         sex_name=='Both',
+         age_name=='Age-standardized',
+         measure_name=='YLDs (Years Lived with Disability)',
+         metric_name=='Rate'
+  )
+
+data_1990_YLDs<-data_1990_YLDs %>% select('location_name',	'val',	'upper',	'lower')  
+
+#保留小数点后两位
+
+data_1990_YLDs <- data_1990_YLDs %>% mutate(val=round(val,2),
+                                            upper=round(upper,2),
+                                            lower=round(lower,2))
+
+
+
+
+library(openxlsx)
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_1990_YLDs, file = "data_1990_YLDs.xlsx")
+
+
+
+
+
+
+# 选择数据：年份为2019 年龄为标准化年龄（AS） 病因所有原因  性别为合计
+# 观测指标为：患病率（PR）
+
+# 数据筛选---》得到2019年的患病率 
+data_2019_ASPR <- data %>% select('measure_name',	'location_name',	'sex_name',	'age_name',	'cause_name',	'metric_name',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex_name=='Both',
+         age_name=='Age-standardized',
+         measure_name=='Prevalence',
+         metric_name=='Rate'
+  )
+
+data_2019_ASPR<-data_2019_ASPR %>% select('location_name',	'val',	'upper',	'lower')  
+
+#保留小数点后两位
+
+data_2019_ASPR <- data_2019_ASPR %>% mutate(val=round(val,2),
+                                            upper=round(upper,2),
+                                            lower=round(lower,2))
+
+library(openxlsx)
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASPR, file = "data_2019_ASPR.xlsx")
+
+
+
+
+
+
+# 选择数据：年份为2019 年龄为标准化年龄（AS） 病因所有原因  性别为合计
+# 观测指标为：发病率（IR）
+
+# 数据筛选---》得到2019 年的发病率 
+data_2019_ASIR <- data %>% select('measure_name',	'location_name',	'sex_name',	'age_name',	'cause_name',	'metric_name',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex_name=='Both',
+         age_name=='Age-standardized',
+         measure_name=='Incidence',
+         metric_name=='Rate'
+  )
+
+data_2019_ASIR<-data_2019_ASIR %>% select('location_name',	'val',	'upper',	'lower')  
+
+#保留小数点后两位
+
+data_2019_ASIR <- data_2019_ASIR %>% mutate(val=round(val,2),
+                                            upper=round(upper,2),
+                                            lower=round(lower,2))
+
+
+
+
+library(openxlsx)
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASIR, file = "data_2019_ASIR.xlsx")
+
+
+
+
+
+
+# 数据筛选---》得到2019年的残疾生存年数
+data_2019_YLDs <- data %>% select('measure_name',	'location_name',	'sex_name',	'age_name',	'cause_name',	'metric_name',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex_name=='Both',
+         age_name=='Age-standardized',
+         measure_name=='YLDs (Years Lived with Disability)',
+         metric_name=='Rate'
+  )
+
+data_2019_YLDs<-data_2019_YLDs %>% select('location_name',	'val',	'upper',	'lower')  
+
+#保留小数点后两位
+
+data_2019_YLDs <- data_2019_YLDs %>% mutate(val=round(val,2),
+                                            upper=round(upper,2),
+                                            lower=round(lower,2))
+
+
+
+
+library(openxlsx)
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_YLDs, file = "data_2019_YLDs.xlsx")
+
+
+
+# 绘制表格
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_21regions.xlsx") 
+# 数据筛选---》得到1990年的患病率
+data_1990_ASPR <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='1990',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='Prevalence',
+         metric=='Rate'
+  ) 
+ 
+
+# 导出数据到 Excel 文件
+write.xlsx(data_1990_ASPR, file = "data_1990_ASPR_regions.xlsx")
+
+
+
+
+# 绘制表格
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_21regions.xlsx") 
+# 数据筛选---》得到1990年发病率
+data_1990_ASIR <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='1990',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='Incidence',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_1990_ASIR, file = "data_1990_ASIR_regions.xlsx")
+
+
+# 绘制表格
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_21regions.xlsx") 
+# 数据筛选---》得到1990年生存年限
+data_1990_YLDs <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='1990',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='YLDs (Years Lived with Disability)',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_1990_YLDs, file = "data_1990_YLDs_regions.xlsx")
+
+
+
+
+
+
+# 绘制表格
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_21regions.xlsx") 
+# 数据筛选---》得到2019年的患病率
+data_2019_ASPR <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='Prevalence',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASPR, file = "data_2019_ASPR_regions.xlsx")
+
+
+
+
+# 绘制表格
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_21regions.xlsx") 
+# 数据筛选---》得到2019年发病率
+data_2019_ASIR <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='Incidence',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASIR, file = "data_2019_ASIR_regions.xlsx")
+
+
+# 绘制表格
+Globa1_21Regions <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_21regions.xlsx") 
+# 数据筛选---》得到2019年生存年限
+data_2019_YLDs <- Globa1_21Regions %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year=='2019',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='YLDs (Years Lived with Disability)',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_YLDs, file = "data_2019_YLDs_regions.xlsx")
+
+
+
+
+
+# 绘制表格
+Globa1_21Regions_change <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_204countries_change.xlsx") 
+# 数据筛选---》得到2019年患病率
+data_2019_ASPR_AAPC <- Globa1_21Regions_change %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year_start','year_end',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year_start=='1990',
+         year_end=='2021',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='Prevalence',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASPR_AAPC, file = "data_2019_YLDs_AAPC_regions.xlsx")
+
+
+
+
+# 绘制表格
+Globa1_21Regions_change <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_204countries_change.xlsx") 
+# 数据筛选---》得到2019年患病率
+data_2019_ASIR_AAPC <- Globa1_21Regions_change %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year_start','year_end',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year_start=='1990',
+         year_end=='2021',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='Incidence',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASIR_AAPC, file = "data_2019_ASIR_AAPC_regions.xlsx")
+
+
+
+
+
+# 绘制表格
+Globa1_21Regions_change <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_204countries_change.xlsx") 
+# 数据筛选---》得到2019年患病率
+data_2019_YLDs_AAPC <- Globa1_21Regions_change %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year_start','year_end',	'val',	'upper',	'lower'
+)  %>% 
+  filter(year_start=='1990',
+         year_end=='2021',
+         sex=='Both',
+         age=='Age-standardized',
+         measure=='YLDs (Years Lived with Disability)',
+         metric=='Rate'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_YLDs_AAPC, file = "data_2019_YLDs_AAPC_regions.xlsx")
+
+
+
+
+
+
+
+
+
+# 绘制表格
+Globa1_21Regions_change <- read_excel("D:\\OneDrive\\桌面\\ML\\GDB\\femur_fractu\\GBD_femur_fractu_1990_2019_global_ml.xlsx") 
+# 数据筛选---》得到2019年患病率
+data_2019_ASPR_global <- Globa1_21Regions_change %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(
+         measure=='Prevalence'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASPR_global, file = "data_2019_ASPR_global.xlsx")
+
+
+
+ # 数据筛选---》得到2019年患病率
+data_2019_ASIR_global <- Globa1_21Regions_change %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(
+         measure=='Incidence'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_ASIR_global, file = "data_2019_ASIR_global.xlsx")
+
+
+
+
+# 数据筛选---》得到2019年患病率
+data_2019_YLDs_global <- Globa1_21Regions_change %>% select('measure',	'location',	'sex',	'age',	'cause',	'metric',	'year',	'val',	'upper',	'lower'
+)  %>% 
+  filter(
+         measure=='YLDs (Years Lived with Disability)'
+  ) 
+
+
+# 导出数据到 Excel 文件
+write.xlsx(data_2019_YLDs_global, file = "data_2019_YLDs_global.xlsx")
+
+
+
+
