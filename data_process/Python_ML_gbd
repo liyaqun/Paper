@@ -1,1 +1,269 @@
+import numpy as np
+import pandas as pd
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing, Holt, ExponentialSmoothing
+from sklearn.linear_model import ElasticNet, Ridge
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
+# from fbprophet import Prophet
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+import matplotlib.pyplot as plt
 
+# 自定义函数计算对称平均绝对百分比误差（SMAPE）
+def smape(y_true, y_pred):
+    denominator = np.abs(y_true) + np.abs(y_pred)
+    diff = np.abs(y_true - y_pred)
+    return np.mean(np.where(denominator == 0, 0, diff / denominator)) * 100
+
+# 定义函数计算各模型评价指标
+def calculate_metrics(y_true, y_pred):
+    mse = mean_squared_error(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100 if np.all(y_true != 0) else np.nan
+    smape_value = smape(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    print(f"真实值：{y_true}")
+    print(f"预测值：{y_pred}")
+    r2 = r2_score(y_true, y_pred)
+    return mse, mae, mape, smape_value, rmse, r2
+
+# 定义存储模型评价指标的 DataFrame
+metrics_df = pd.DataFrame(columns=['Model', 'MSE', 'MAE', 'MAPE', 'SMAPE', 'RMSE', 'R²'])
+
+# 定义文件路径列表
+file_paths = [
+    "D:\OneDrive\桌面\ML\GDB\First_test\data_2019_ASIR_global.xlsx",
+    "D:\OneDrive\桌面\ML\GDB\First_test\data_2019_ASPR_global.xlsx",
+    "D:\OneDrive\桌面\ML\GDB\First_test\data_2019_YLDs_global.xlsx"
+]
+
+# 遍历文件路径列表
+for file_path in file_paths:
+    # 读取 Excel 文件
+    excel_file = pd.ExcelFile(file_path)
+
+    # 获取所有表名
+    sheet_names = excel_file.sheet_names
+
+    # 遍历表名列表
+    for sheet_name in sheet_names:
+        # 获取当前工作表的数据
+        df = excel_file.parse(sheet_name)
+
+        # 准备 ElasticNet、RandomForest 和 XGBoost 模型的数据
+        X = df['year'].values.reshape(-1, 1)
+        y = df['val'].values
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        # ElasticNet 模型
+        try:
+            elasticnet_model = ElasticNet()
+            elasticnet_model.fit(X_train, y_train)
+            elasticnet_pred = elasticnet_model.predict(X_test)
+            elasticnet_mse, elasticnet_mae, elasticnet_mape, elasticnet_smape, elasticnet_rmse, elasticnet_r2 = calculate_metrics(
+                y_test, elasticnet_pred)
+            metrics_df = pd.concat([metrics_df, pd.DataFrame({
+                'Model': ['ElasticNet'],
+                'MSE': [elasticnet_mse],
+                'MAE': [elasticnet_mae],
+                'MAPE': [elasticnet_mape],
+                'SMAPE': [elasticnet_smape],
+                'RMSE': [elasticnet_rmse],
+                'R²': [elasticnet_r2]
+            })], ignore_index=True)
+
+            # 绘图
+            plt.figure(figsize=(10, 6))
+            plt.plot(X_train.flatten(), y_train, label='Actual (Train)', alpha=0.7)
+            plt.plot(X_test.flatten(), y_test, label='Actual (Test)', alpha=0.7)
+            plt.plot(X_test.flatten(), elasticnet_pred, label='ElasticNet Prediction', color='r')
+           
+            lower_bound = elasticnet_pred - 0.1 * elasticnet_pred
+            upper_bound = elasticnet_pred + 0.1 * elasticnet_pred
+            plt.fill_between(X_test.flatten(), lower_bound, upper_bound, color='gray', alpha=0.2,
+                             label='Confidence Interval')
+            plt.title(f"{sheet_name} - ElasticNet Forecast")
+            plt.xlabel('Year')
+            plt.ylabel(sheet_name)
+            plt.legend()
+            plt.show()
+        except Exception as e:
+            print(f'ElasticNet 模型在文件 {file_path}，工作表 {sheet_name} 上出现错误: {e}')
+
+        # RandomForest 模型
+        try:
+            rf_model = RandomForestRegressor()
+            rf_model.fit(X_train, y_train)
+            rf_pred = rf_model.predict(X_test)
+            rf_mse, rf_mae, rf_mape, rf_smape, rf_rmse, rf_r2 = calculate_metrics(y_test, rf_pred)
+            metrics_df = pd.concat([metrics_df, pd.DataFrame({
+                'Model': ['RandomForest'],
+                'MSE': [rf_mse],
+                'MAE': [rf_mae],
+                'MAPE': [rf_mape],
+                'SMAPE': [rf_smape],
+                'RMSE': [rf_rmse],
+                'R²': [rf_r2]
+            })], ignore_index=True)
+
+            # 绘图
+            plt.figure(figsize=(10, 6))
+            plt.plot(X_train.flatten(), y_train, label='Actual (Train)', alpha=0.7)
+            plt.plot(X_test.flatten(), y_test, label='Actual (Test)', alpha=0.7)
+            plt.plot(X_test.flatten(), rf_pred, label='RandomForest Prediction', color='r')
+         
+            lower_bound = rf_pred - 0.1 * rf_pred
+            upper_bound = rf_pred + 0.1 * rf_pred
+            plt.fill_between(X_test.flatten(), lower_bound, upper_bound, color='gray', alpha=0.2,
+                             label='Confidence Interval')
+            plt.title(f"{sheet_name} - RandomForest Forecast")
+            plt.xlabel('Year')
+            plt.ylabel(sheet_name)
+            plt.legend()
+            plt.show()
+        except Exception as e:
+            print(f'RandomForest 模型在文件 {file_path}，工作表 {sheet_name} 上出现错误: {e}')
+
+        # XGBoost 模型
+        try:
+            xgb_model = XGBRegressor()
+            xgb_model.fit(X_train, y_train)
+            xgb_pred = xgb_model.predict(X_test)
+            xgb_mse, xgb_mae, xgb_mape, xgb_smape, xgb_rmse, xgb_r2 = calculate_metrics(y_test, xgb_pred)
+            metrics_df = pd.concat([metrics_df, pd.DataFrame({
+                'Model': ['XGBoost'],
+                'MSE': [xgb_mse],
+                'MAE': [xgb_mae],
+                'MAPE': [xgb_mape],
+                'SMAPE': [xgb_smape],
+                'RMSE': [xgb_rmse],
+                'R²': [xgb_r2]
+            })], ignore_index=True)
+
+            # 绘图
+            plt.figure(figsize=(10, 6))
+            plt.plot(X_train.flatten(), y_train, label='Actual (Train)', alpha=0.7)
+            plt.plot(X_test.flatten(), y_test, label='Actual (Test)', alpha=0.7)
+            plt.plot(X_test.flatten(), xgb_pred, label='XGBoost Prediction', color='r')
+          
+            lower_bound = xgb_pred - 0.1 * xgb_pred
+            upper_bound = xgb_pred + 0.1 * xgb_pred
+            plt.fill_between(X_test.flatten(), lower_bound, upper_bound, color='gray', alpha=0.2,
+                             label='Confidence Interval')
+            plt.title(f"{sheet_name} - XGBoost Forecast")
+            plt.xlabel('Year')
+            plt.ylabel(sheet_name)
+            plt.legend()
+            plt.show()
+        except Exception as e:
+            print(f'XGBoost 模型在文件 {file_path}，工作表 {sheet_name} 上出现错误: {e}')
+
+        # 岭回归模型
+        try:
+            ridge_model = Ridge()
+            ridge_model.fit(X_train, y_train)
+            ridge_pred = ridge_model.predict(X_test)
+            ridge_mse, ridge_mae, ridge_mape, ridge_smape, ridge_rmse, ridge_r2 = calculate_metrics(
+                y_test, ridge_pred)
+            metrics_df = pd.concat([metrics_df, pd.DataFrame({
+                'Model': ['Ridge'],
+                'MSE': [ridge_mse],
+                'MAE': [ridge_mae],
+                'MAPE': [ridge_mape],
+                'SMAPE': [ridge_smape],
+                'RMSE': [ridge_rmse],
+                'R²': [ridge_r2]
+            })], ignore_index=True)
+
+            # 绘图
+            plt.figure(figsize=(10, 6))
+            plt.plot(X_train.flatten(), y_train, label='Actual (Train)', alpha=0.7)
+            plt.plot(X_test.flatten(), y_test, label='Actual (Test)', alpha=0.7)
+            plt.plot(X_test.flatten(), ridge_pred, label='Ridge Prediction', color='g')
+            lower_bound = ridge_pred - 0.1 * ridge_pred
+            upper_bound = ridge_pred + 0.1 * ridge_pred
+            plt.fill_between(X_test.flatten(), lower_bound, upper_bound, color='gray', alpha=0.2,
+                             label='Confidence Interval')
+            plt.title(f"{sheet_name} - Ridge Forecast")
+            plt.xlabel('Year')
+            plt.ylabel(sheet_name)
+            plt.legend()
+            plt.show()
+        except Exception as e:
+            print(f'Ridge 模型在文件 {file_path}，工作表 {sheet_name} 上出现错误: {e}')
+
+        # K近邻回归模型
+        try:
+            knn_model = KNeighborsRegressor()
+            knn_model.fit(X_train, y_train)
+            knn_pred = knn_model.predict(X_test)
+            knn_mse, knn_mae, knn_mape, knn_smape, knn_rmse, knn_r2 = calculate_metrics(
+                y_test, knn_pred)
+            metrics_df = pd.concat([metrics_df, pd.DataFrame({
+                'Model': ['KNN'],
+                'MSE': [knn_mse],
+                'MAE': [knn_mae],
+                'MAPE': [knn_mape],
+                'SMAPE': [knn_smape],
+                'RMSE': [knn_rmse],
+                'R²': [knn_r2]
+            })], ignore_index=True)
+
+            # 绘图
+            plt.figure(figsize=(10, 6))
+            plt.plot(X_train.flatten(), y_train, label='Actual (Train)', alpha=0.7)
+            plt.plot(X_test.flatten(), y_test, label='Actual (Test)', alpha=0.7)
+            plt.plot(X_test.flatten(), knn_pred, label='KNN Prediction', color='m')
+            lower_bound = knn_pred - 0.1 * knn_pred
+            upper_bound = knn_pred + 0.1 * knn_pred
+            plt.fill_between(X_test.flatten(), lower_bound, upper_bound, color='gray', alpha=0.2,
+                             label='Confidence Interval')
+            plt.title(f"{sheet_name} - KNN Forecast")
+            plt.xlabel('Year')
+            plt.ylabel(sheet_name)
+            plt.legend()
+            plt.show()
+        except Exception as e:
+            print(f'KNN 模型在文件 {file_path}，工作表 {sheet_name} 上出现错误: {e}')
+
+        # 支持向量回归模型
+        try:
+            svr_model = SVR()
+            svr_model.fit(X_train, y_train)
+            svr_pred = svr_model.predict(X_test)
+            svr_mse, svr_mae, svr_mape, svr_smape, svr_rmse, svr_r2 = calculate_metrics(
+                y_test, svr_pred)
+            metrics_df = pd.concat([metrics_df, pd.DataFrame({
+                'Model': ['SVR'],
+                'MSE': [svr_mse],
+                'MAE': [svr_mae],
+                'MAPE': [svr_mape],
+                'SMAPE': [svr_smape],
+                'RMSE': [svr_rmse],
+                'R²': [svr_r2]
+            })], ignore_index=True)
+
+            # 绘图
+            plt.figure(figsize=(10, 6))
+            plt.plot(X_train.flatten(), y_train, label='Actual (Train)', alpha=0.7)
+            plt.plot(X_test.flatten(), y_test, label='Actual (Test)', alpha=0.7)
+            plt.plot(X_test.flatten(), svr_pred, label='SVR Prediction', color='c')
+            lower_bound = svr_pred - 0.1 * svr_pred
+            upper_bound = svr_pred + 0.1 * svr_pred
+            plt.fill_between(X_test.flatten(), lower_bound, upper_bound, color='gray', alpha=0.2,
+                             label='Confidence Interval')
+            plt.title(f"{sheet_name} - SVR Forecast")
+            plt.xlabel('Year')
+            plt.ylabel(sheet_name)
+            plt.legend()
+            plt.show()
+        except Exception as e:
+            print(f'SVR 模型在文件 {file_path}，工作表 {sheet_name} 上出现错误: {e}')
+
+print('各模型评价指标：')
+print(metrics_df)
+    
